@@ -1,0 +1,18 @@
+version: "3"
+
+tasks:
+  test:
+    desc: Run all tests verbosely without using cached results
+    cmds:
+      - go test -v -count=1 ./...
+
+  coverage:
+    desc: Run all tests with race detection and report coverage
+    cmds:
+      - go test -race -covermode=atomic -coverprofile=coverage.out ./...
+      - go tool cover -func=coverage.out
+
+  bench:
+    desc: Run all benchmarks with memory allocation statistics
+    cmds:
+      - go test -run '^$' -bench . -benchmem ./...
