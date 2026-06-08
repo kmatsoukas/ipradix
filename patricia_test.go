@@ -41,7 +41,7 @@ func TestDeleteNodeBranches(t *testing.T) {
 		t.Fatalf("deleteNode(branch) = (%v, %v); want unchanged branch, false", got, deleted)
 	}
 
-	value := Prefix[struct{}]{Prefix: prefix, Routes: []Route[struct{}]{{ID: "route"}}}
+	value := Prefix[struct{}]{Prefix: prefix, Routes: []Route[struct{}]{{ID: 1}}}
 	leaf := &node[struct{}]{prefix: prefix, value: &value}
 	if got, deleted := deleteNode(leaf, netip.MustParsePrefix("10.0.0.0/7")); got != leaf || deleted {
 		t.Fatalf("deleteNode(shorter) = (%v, %v); want unchanged leaf, false", got, deleted)

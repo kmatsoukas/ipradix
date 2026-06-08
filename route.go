@@ -18,14 +18,14 @@ type LargeCommunity struct {
 	LocalData2          uint32
 }
 
-// Route describes a path to a prefix. ID is supplied by the caller and must
-// remain stable for the lifetime of the path.
+// Route describes a path to a prefix. ID is a nonzero value supplied by the
+// caller and must remain stable for the lifetime of the path.
 //
 // Metadata is copied by assignment. Callers must treat metadata containing
 // pointers, maps, slices, or other reference types as immutable while stored
 // in a Table and after it is returned by a lookup.
 type Route[M any] struct {
-	ID                  string
+	ID                  uint64
 	RouterID            netip.Addr
 	NextHop             netip.Addr
 	PeerAS              uint32

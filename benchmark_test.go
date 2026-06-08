@@ -2,7 +2,6 @@ package ipradix
 
 import (
 	"encoding/binary"
-	"fmt"
 	"net/netip"
 	"testing"
 )
@@ -16,7 +15,7 @@ func BenchmarkFindIPv4(b *testing.B) {
 		prefix := netip.PrefixFrom(netip.AddrFrom4(bytes), 24)
 		if err := table.Insert(Prefix[struct{}]{
 			Prefix: prefix,
-			Routes: []Route[struct{}]{{ID: fmt.Sprintf("%d", i)}},
+			Routes: []Route[struct{}]{{ID: uint64(i + 1)}},
 		}); err != nil {
 			b.Fatal(err)
 		}
@@ -46,7 +45,7 @@ func BenchmarkFindIPv6(b *testing.B) {
 		prefix := netip.PrefixFrom(netip.AddrFrom16(bytes), 64)
 		if err := table.Insert(Prefix[struct{}]{
 			Prefix: prefix,
-			Routes: []Route[struct{}]{{ID: fmt.Sprintf("%d", i)}},
+			Routes: []Route[struct{}]{{ID: uint64(i + 1)}},
 		}); err != nil {
 			b.Fatal(err)
 		}

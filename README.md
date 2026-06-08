@@ -55,7 +55,7 @@ func main() {
 		Prefix: netip.MustParsePrefix("10.0.0.0/8"),
 		Routes: []ipradix.Route[Metadata]{
 			{
-				ID:      "peer-a/path-0",
+				ID:      1,
 				NextHop: netip.MustParseAddr("192.0.2.1"),
 				Metadata: Metadata{
 					Country: "US",
@@ -73,7 +73,7 @@ func main() {
 		Prefix: netip.MustParsePrefix("10.20.0.0/16"),
 		Routes: []ipradix.Route[Metadata]{
 			{
-				ID:      "peer-b/path-0",
+				ID:      2,
 				NextHop: netip.MustParseAddr("192.0.2.2"),
 				Metadata: Metadata{
 					Country: "US",
@@ -118,7 +118,7 @@ var table ipradix.Table[Metadata]
 _ = table.UpsertRoute(
 	netip.MustParsePrefix("2001:db8::/32"),
 	ipradix.Route[Metadata]{
-		ID:      "ipv6-peer/path-0",
+		ID:      1,
 		NextHop: netip.MustParseAddr("2001:db8::1"),
 		Metadata: Metadata{
 			Country: "US",
@@ -155,7 +155,7 @@ var table ipradix.Table[Metadata]
 err := table.UpsertRoute(
 	netip.MustParsePrefix("203.0.113.0/24"),
 	ipradix.Route[Metadata]{
-		ID:              "peer-192.0.2.1/path-0",
+		ID:              1 << 32,
 		RouterID:        netip.MustParseAddr("192.0.2.1"),
 		NextHop:         netip.MustParseAddr("192.0.2.254"),
 		PeerAS:          64512,
@@ -180,15 +180,24 @@ if err != nil {
 }
 ```
 
-`Route.ID` is supplied by the caller and identifies a route within a prefix.
-A peer or session identity combined with the BGP ADD-PATH identifier is a
-typical choice:
+`Route.ID` is an opaque `uint64` supplied by the caller. It must be nonzero,
+unique within a prefix, and stable across updates and withdrawals. The library
+does not interpret the ID or derive it from route attributes.
 
-```text
-peer-192.0.2.1/path-0
+Applications that track routes from multiple observation sources can pack a
+32-bit source ID and a 32-bit path ID into one route ID:
+
+```go
+type SourceID uint32
+
+func routeID(source SourceID, pathID uint32) uint64 {
+	return uint64(source)<<32 | uint64(pathID)
+}
 ```
 
-The ID must remain stable across updates. Do not derive it from mutable
+The application owns source allocation and any registry that maps a source ID
+back to router or peer details. When BGP ADD-PATH is not in use, `pathID` can
+be zero as long as `source` is nonzero. Do not derive route IDs from mutable
 attributes such as the next hop, AS path, or communities.
 
 ## Updating and Deleting Routes
@@ -198,9 +207,10 @@ replaces a route with the same ID or appends a route with a new ID:
 
 ```go
 prefix := netip.MustParsePrefix("203.0.113.0/24")
+id := routeID(1, 0)
 
 _ = table.UpsertRoute(prefix, ipradix.Route[Metadata]{
-	ID:      "peer-a/path-0",
+	ID:      id,
 	NextHop: netip.MustParseAddr("192.0.2.10"),
 	Metadata: Metadata{
 		Country: "US",
@@ -212,8 +222,8 @@ _ = table.UpsertRoute(prefix, ipradix.Route[Metadata]{
 	},
 })
 
-table.DeleteRoute(prefix, "peer-a/path-0") // Removes one route.
-table.Delete(prefix)                       // Removes the entire prefix.
+table.DeleteRoute(prefix, id) // Removes one route.
+table.Delete(prefix)          // Removes the entire prefix.
 ```
 
 Deleting the final route also removes its prefix.
