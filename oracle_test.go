@@ -2,7 +2,6 @@ package ipradix
 
 import (
 	"encoding/binary"
-	"fmt"
 	"math/rand"
 	"net/netip"
 	"testing"
@@ -25,7 +24,7 @@ func testRandomFamily(t *testing.T, rng *rand.Rand, ipv4 bool, prefixCount, look
 		prefix := netip.PrefixFrom(addr, bits).Masked()
 		entry := Prefix[int]{
 			Prefix: prefix,
-			Routes: []Route[int]{{ID: fmt.Sprintf("route-%d", i), Metadata: i}},
+			Routes: []Route[int]{{ID: uint64(i + 1), Metadata: i}},
 		}
 		if err := table.Insert(entry); err != nil {
 			t.Fatalf("Insert(%s) failed: %v", prefix, err)
@@ -118,7 +117,7 @@ func FuzzFindAgainstLinearOracle(f *testing.F) {
 			prefix := netip.PrefixFrom(addr, bits).Masked()
 			entry := Prefix[struct{}]{
 				Prefix: prefix,
-				Routes: []Route[struct{}]{{ID: fmt.Sprintf("%d", i)}},
+				Routes: []Route[struct{}]{{ID: uint64(i + 1)}},
 			}
 			if err := table.Insert(entry); err != nil {
 				t.Fatalf("Insert(%s) failed: %v", prefix, err)

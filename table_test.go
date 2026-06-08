@@ -2,7 +2,6 @@ package ipradix
 
 import (
 	"errors"
-	"fmt"
 	"net/netip"
 	"reflect"
 	"sync"
@@ -12,12 +11,12 @@ import (
 func TestTableFindAndFindAll(t *testing.T) {
 	var table Table[string]
 	entries := []Prefix[string]{
-		testPrefix("0.0.0.0/0", "v4-default"),
-		testPrefix("10.0.0.0/8", "v4-private"),
-		testPrefix("10.1.42.99/16", "v4-site"),
-		testPrefix("::/0", "v6-default"),
-		testPrefix("2001:db8::/32", "v6-doc"),
-		testPrefix("2001:db8:1::/48", "v6-site"),
+		testPrefix("0.0.0.0/0", 1),
+		testPrefix("10.0.0.0/8", 2),
+		testPrefix("10.1.42.99/16", 3),
+		testPrefix("::/0", 4),
+		testPrefix("2001:db8::/32", 5),
+		testPrefix("2001:db8:1::/48", 6),
 	}
 	for _, entry := range entries {
 		if err := table.Insert(entry); err != nil {
@@ -66,7 +65,7 @@ func TestTableFindAndFindAll(t *testing.T) {
 
 func TestTableWithoutDefaultReturnsNoMatch(t *testing.T) {
 	var table Table[struct{}]
-	if err := table.Insert(testPrefixOf[struct{}]("10.0.0.0/8", "private")); err != nil {
+	if err := table.Insert(testPrefixOf[struct{}]("10.0.0.0/8", 1)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -90,7 +89,7 @@ func TestInsertValidation(t *testing.T) {
 	}{
 		{
 			name:   "invalid prefix",
-			prefix: Prefix[struct{}]{Routes: []Route[struct{}]{{ID: "route"}}},
+			prefix: Prefix[struct{}]{Routes: []Route[struct{}]{{ID: 1}}},
 			err:    ErrInvalidPrefix,
 		},
 		{
@@ -110,7 +109,7 @@ func TestInsertValidation(t *testing.T) {
 			name: "duplicate route ID",
 			prefix: Prefix[struct{}]{
 				Prefix: netip.MustParsePrefix("10.0.0.0/8"),
-				Routes: []Route[struct{}]{{ID: "route"}, {ID: "route"}},
+				Routes: []Route[struct{}]{{ID: 1}, {ID: 1}},
 			},
 			err: ErrDuplicateRouteID,
 		},
@@ -118,7 +117,7 @@ func TestInsertValidation(t *testing.T) {
 			name: "unrepresentable mapped prefix",
 			prefix: Prefix[struct{}]{
 				Prefix: netip.MustParsePrefix("::ffff:192.0.2.1/95"),
-				Routes: []Route[struct{}]{{ID: "route"}},
+				Routes: []Route[struct{}]{{ID: 1}},
 			},
 			err: ErrInvalidPrefix,
 		},
@@ -138,7 +137,7 @@ func TestCanonicalization(t *testing.T) {
 	mapped := Prefix[struct{}]{
 		Prefix: netip.MustParsePrefix("::ffff:192.0.2.129/120"),
 		Routes: []Route[struct{}]{{
-			ID:       "mapped",
+			ID:       1,
 			RouterID: netip.MustParseAddr("::ffff:192.0.2.10"),
 			NextHop:  netip.MustParseAddr("fe80::1%eth0"),
 		}},
@@ -172,17 +171,17 @@ func TestRouteMutations(t *testing.T) {
 	if err := table.Insert(Prefix[string]{
 		Prefix: prefix,
 		Routes: []Route[string]{
-			{ID: "peer-a", MED: 10, Metadata: "a"},
-			{ID: "peer-b", MED: 20, Metadata: "b"},
+			{ID: 1, MED: 10, Metadata: "a"},
+			{ID: 2, MED: 20, Metadata: "b"},
 		},
 	}); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := table.UpsertRoute(prefix, Route[string]{ID: "peer-a", MED: 30, Metadata: "updated"}); err != nil {
+	if err := table.UpsertRoute(prefix, Route[string]{ID: 1, MED: 30, Metadata: "updated"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := table.UpsertRoute(prefix, Route[string]{ID: "peer-c", MED: 40}); err != nil {
+	if err := table.UpsertRoute(prefix, Route[string]{ID: 3, MED: 40}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -190,27 +189,37 @@ func TestRouteMutations(t *testing.T) {
 	if !ok {
 		t.Fatal("Find() did not find prefix")
 	}
-	if ids := routeIDs(got.Routes); !reflect.DeepEqual(ids, []string{"peer-a", "peer-b", "peer-c"}) {
+	if ids := routeIDs(got.Routes); !reflect.DeepEqual(ids, []uint64{1, 2, 3}) {
 		t.Fatalf("route IDs = %v; want replacement in place and append", ids)
 	}
 	if got.Routes[0].MED != 30 || got.Routes[0].Metadata != "updated" {
 		t.Fatalf("replacement route = %+v; want updated values", got.Routes[0])
 	}
 
-	if table.DeleteRoute(prefix, "missing") {
+	if table.DeleteRoute(prefix, 99) {
 		t.Fatal("DeleteRoute() deleted an unknown route")
 	}
-	if !table.DeleteRoute(prefix, "peer-b") || !table.DeleteRoute(prefix, "peer-a") {
+	if !table.DeleteRoute(prefix, 2) {
 		t.Fatal("DeleteRoute() failed for an existing route")
 	}
-	if !table.DeleteRoute(prefix, "peer-c") {
+	got, ok = table.Find(netip.MustParseAddr("203.0.113.1"))
+	if !ok {
+		t.Fatal("DeleteRoute() removed the prefix while routes remained")
+	}
+	if ids := routeIDs(got.Routes); !reflect.DeepEqual(ids, []uint64{1, 3}) {
+		t.Fatalf("route IDs after deletion = %v; want [1 3]", ids)
+	}
+	if !table.DeleteRoute(prefix, 1) {
+		t.Fatal("DeleteRoute() failed for an existing route")
+	}
+	if !table.DeleteRoute(prefix, 3) {
 		t.Fatal("DeleteRoute() failed for final route")
 	}
 	if _, ok := table.Find(netip.MustParseAddr("203.0.113.1")); ok {
 		t.Fatal("prefix remained after its final route was deleted")
 	}
 
-	if err := table.UpsertRoute(prefix, Route[string]{ID: "new"}); err != nil {
+	if err := table.UpsertRoute(prefix, Route[string]{ID: 4}); err != nil {
 		t.Fatalf("UpsertRoute() failed to create prefix: %v", err)
 	}
 	if _, ok := table.Find(netip.MustParseAddr("203.0.113.1")); !ok {
@@ -226,26 +235,26 @@ func TestMutationInvalidInputs(t *testing.T) {
 	invalid := netip.Prefix{}
 	valid := netip.MustParsePrefix("10.0.0.0/8")
 
-	if err := table.UpsertRoute(invalid, Route[struct{}]{ID: "route"}); !errors.Is(err, ErrInvalidPrefix) {
+	if err := table.UpsertRoute(invalid, Route[struct{}]{ID: 1}); !errors.Is(err, ErrInvalidPrefix) {
 		t.Fatalf("UpsertRoute(invalid) error = %v; want ErrInvalidPrefix", err)
 	}
 	if table.Delete(invalid) {
 		t.Fatal("Delete(invalid) = true; want false")
 	}
-	if table.DeleteRoute(valid, "") {
+	if table.DeleteRoute(valid, 0) {
 		t.Fatal("DeleteRoute(empty ID) = true; want false")
 	}
-	if table.DeleteRoute(invalid, "route") {
+	if table.DeleteRoute(invalid, 1) {
 		t.Fatal("DeleteRoute(invalid prefix) = true; want false")
 	}
-	if table.DeleteRoute(valid, "route") {
+	if table.DeleteRoute(valid, 1) {
 		t.Fatal("DeleteRoute(missing prefix) = true; want false")
 	}
 
-	if err := table.Insert(testPrefixOf[struct{}]("10.0.0.0/8", "route")); err != nil {
+	if err := table.Insert(testPrefixOf[struct{}]("10.0.0.0/8", 1)); err != nil {
 		t.Fatal(err)
 	}
-	if table.DeleteRoute(netip.MustParsePrefix("10.1.0.0/16"), "route") {
+	if table.DeleteRoute(netip.MustParsePrefix("10.1.0.0/16"), 1) {
 		t.Fatal("DeleteRoute(missing exact prefix) = true; want false")
 	}
 }
@@ -253,8 +262,8 @@ func TestMutationInvalidInputs(t *testing.T) {
 func TestHostPrefixMatches(t *testing.T) {
 	var table Table[struct{}]
 	entries := []Prefix[struct{}]{
-		testPrefixOf[struct{}]("192.0.2.1/32", "v4-host"),
-		testPrefixOf[struct{}]("2001:db8::1/128", "v6-host"),
+		testPrefixOf[struct{}]("192.0.2.1/32", 1),
+		testPrefixOf[struct{}]("2001:db8::1/128", 2),
 	}
 	for _, entry := range entries {
 		if err := table.Insert(entry); err != nil {
@@ -277,10 +286,10 @@ func TestHostPrefixMatches(t *testing.T) {
 
 func TestInsertReplacesExactPrefix(t *testing.T) {
 	var table Table[struct{}]
-	if err := table.Insert(testPrefixOf[struct{}]("10.0.0.0/8", "old")); err != nil {
+	if err := table.Insert(testPrefixOf[struct{}]("10.0.0.0/8", 1)); err != nil {
 		t.Fatal(err)
 	}
-	if err := table.Insert(testPrefixOf[struct{}]("10.0.0.0/8", "new")); err != nil {
+	if err := table.Insert(testPrefixOf[struct{}]("10.0.0.0/8", 2)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -288,15 +297,15 @@ func TestInsertReplacesExactPrefix(t *testing.T) {
 	if !ok {
 		t.Fatal("Find() did not find replaced prefix")
 	}
-	if ids := routeIDs(got.Routes); !reflect.DeepEqual(ids, []string{"new"}) {
-		t.Fatalf("route IDs = %v; want [new]", ids)
+	if ids := routeIDs(got.Routes); !reflect.DeepEqual(ids, []uint64{2}) {
+		t.Fatalf("route IDs = %v; want [2]", ids)
 	}
 }
 
 func TestDeletePreservesOtherBranches(t *testing.T) {
 	var table Table[struct{}]
-	for _, prefix := range []string{"10.0.0.0/8", "10.0.0.0/9", "10.128.0.0/9", "10.64.0.0/10"} {
-		if err := table.Insert(testPrefixOf[struct{}](prefix, prefix)); err != nil {
+	for i, prefix := range []string{"10.0.0.0/8", "10.0.0.0/9", "10.128.0.0/9", "10.64.0.0/10"} {
+		if err := table.Insert(testPrefixOf[struct{}](prefix, uint64(i+1))); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -324,7 +333,7 @@ func TestDeletePreservesOtherBranches(t *testing.T) {
 func TestRouteDataIsCopied(t *testing.T) {
 	var table Table[string]
 	route := Route[string]{
-		ID:                  "route",
+		ID:                  1,
 		ASPath:              []uint32{64512, 64496},
 		Communities:         []uint32{100},
 		ExtendedCommunities: []uint64{200},
@@ -339,7 +348,7 @@ func TestRouteDataIsCopied(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	entry.Routes[0].ID = "mutated"
+	entry.Routes[0].ID = 2
 	route.ASPath[0] = 1
 	route.Communities[0] = 2
 	route.ExtendedCommunities[0] = 3
@@ -349,7 +358,7 @@ func TestRouteDataIsCopied(t *testing.T) {
 	if !ok {
 		t.Fatal("Find() did not find prefix")
 	}
-	if got.Routes[0].ID != "route" ||
+	if got.Routes[0].ID != 1 ||
 		got.Routes[0].ASPath[0] != 64512 ||
 		got.Routes[0].Communities[0] != 100 ||
 		got.Routes[0].ExtendedCommunities[0] != 200 ||
@@ -357,10 +366,10 @@ func TestRouteDataIsCopied(t *testing.T) {
 		t.Fatalf("stored route was changed through input aliases: %+v", got.Routes[0])
 	}
 
-	got.Routes[0].ID = "output-mutated"
+	got.Routes[0].ID = 3
 	got.Routes[0].ASPath[0] = 5
 	again, ok := table.Find(netip.MustParseAddr("198.51.100.1"))
-	if !ok || again.Routes[0].ID != "route" || again.Routes[0].ASPath[0] != 64512 {
+	if !ok || again.Routes[0].ID != 1 || again.Routes[0].ASPath[0] != 64512 {
 		t.Fatalf("stored route was changed through output aliases: %+v", again.Routes[0])
 	}
 }
@@ -368,7 +377,7 @@ func TestRouteDataIsCopied(t *testing.T) {
 func TestConcurrentAccess(t *testing.T) {
 	var table Table[int]
 	prefix := netip.MustParsePrefix("10.0.0.0/8")
-	if err := table.UpsertRoute(prefix, Route[int]{ID: "base"}); err != nil {
+	if err := table.UpsertRoute(prefix, Route[int]{ID: 1}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -378,7 +387,7 @@ func TestConcurrentAccess(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			id := fmt.Sprintf("worker-%d", worker)
+			id := uint64(worker + 2)
 			for i := 0; i < 500; i++ {
 				if worker%2 == 0 {
 					if err := table.UpsertRoute(prefix, Route[int]{ID: id, MED: uint32(i), Metadata: i}); err != nil {
@@ -401,11 +410,11 @@ func TestConcurrentAccess(t *testing.T) {
 	wg.Wait()
 }
 
-func testPrefix(prefix, routeID string) Prefix[string] {
+func testPrefix(prefix string, routeID uint64) Prefix[string] {
 	return testPrefixOf[string](prefix, routeID)
 }
 
-func testPrefixOf[M any](prefix, routeID string) Prefix[M] {
+func testPrefixOf[M any](prefix string, routeID uint64) Prefix[M] {
 	return Prefix[M]{
 		Prefix: netip.MustParsePrefix(prefix),
 		Routes: []Route[M]{{ID: routeID}},
@@ -420,8 +429,8 @@ func prefixStrings[M any](prefixes []Prefix[M]) []string {
 	return result
 }
 
-func routeIDs[M any](routes []Route[M]) []string {
-	result := make([]string, len(routes))
+func routeIDs[M any](routes []Route[M]) []uint64 {
+	result := make([]uint64, len(routes))
 	for i := range routes {
 		result[i] = routes[i].ID
 	}

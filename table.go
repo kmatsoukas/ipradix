@@ -53,7 +53,7 @@ func (t *Table[M]) UpsertRoute(prefix netip.Prefix, route Route[M]) error {
 	if err != nil {
 		return err
 	}
-	if route.ID == "" {
+	if route.ID == 0 {
 		return ErrEmptyRouteID
 	}
 	route = cloneRoute(route)
@@ -97,8 +97,8 @@ func (t *Table[M]) Delete(prefix netip.Prefix) bool {
 
 // DeleteRoute removes a route by ID from an exact prefix. Removing the final
 // route also removes the prefix.
-func (t *Table[M]) DeleteRoute(prefix netip.Prefix, routeID string) bool {
-	if routeID == "" {
+func (t *Table[M]) DeleteRoute(prefix netip.Prefix, routeID uint64) bool {
+	if routeID == 0 {
 		return false
 	}
 	normalized, err := normalizePrefix(prefix)
@@ -198,13 +198,13 @@ func validateRoutes[M any](routes []Route[M]) error {
 	if len(routes) == 0 {
 		return ErrEmptyRoutes
 	}
-	ids := make(map[string]struct{}, len(routes))
+	ids := make(map[uint64]struct{}, len(routes))
 	for i := range routes {
-		if routes[i].ID == "" {
+		if routes[i].ID == 0 {
 			return fmt.Errorf("%w at index %d", ErrEmptyRouteID, i)
 		}
 		if _, exists := ids[routes[i].ID]; exists {
-			return fmt.Errorf("%w %q", ErrDuplicateRouteID, routes[i].ID)
+			return fmt.Errorf("%w %d", ErrDuplicateRouteID, routes[i].ID)
 		}
 		ids[routes[i].ID] = struct{}{}
 	}

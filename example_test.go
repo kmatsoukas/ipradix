@@ -24,7 +24,7 @@ func ExampleTable_Find() {
 		Prefix: netip.MustParsePrefix("203.0.113.0/24"),
 		Routes: []ipradix.Route[exampleMetadata]{
 			{
-				ID:       "peer-192.0.2.1/path-0",
+				ID:       1,
 				NextHop:  netip.MustParseAddr("192.0.2.254"),
 				PeerAS:   64512,
 				OriginAS: 64496,
