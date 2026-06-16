@@ -13,9 +13,9 @@ const (
 
 // LargeCommunity is a BGP large community.
 type LargeCommunity struct {
-	GlobalAdministrator uint32
-	LocalData1          uint32
-	LocalData2          uint32
+	GlobalAdministrator uint32 `json:"globalAdministrator"`
+	LocalData1          uint32 `json:"localData1"`
+	LocalData2          uint32 `json:"localData2"`
 }
 
 // Route describes a path to a prefix. ID is a nonzero value supplied by the
@@ -25,25 +25,25 @@ type LargeCommunity struct {
 // pointers, maps, slices, or other reference types as immutable while stored
 // in a Table and after it is returned by a lookup.
 type Route[M any] struct {
-	ID                  uint64
-	RouterID            netip.Addr
-	NextHop             netip.Addr
-	PeerAS              uint32
-	OriginAS            uint32
-	ASPath              []uint32
-	Communities         []uint32
-	ExtendedCommunities []uint64
-	LargeCommunities    []LargeCommunity
-	LocalPreference     uint32
-	MED                 uint32
-	Origin              Origin
-	Metadata            M
+	ID                  uint64           `json:"id"`
+	RouterID            netip.Addr       `json:"routerId"`
+	NextHop             netip.Addr       `json:"nextHop"`
+	PeerAS              uint32           `json:"peerAs"`
+	OriginAS            uint32           `json:"originAs"`
+	ASPath              []uint32         `json:"asPath"`
+	Communities         []uint32         `json:"communities"`
+	ExtendedCommunities []uint64         `json:"extendedCommunities"`
+	LargeCommunities    []LargeCommunity `json:"largeCommunities"`
+	LocalPreference     uint32           `json:"localPreference"`
+	MED                 uint32           `json:"med"`
+	Origin              Origin           `json:"origin"`
+	Metadata            M                `json:"metadata"`
 }
 
 // Prefix associates a network prefix with all known routes to it.
 type Prefix[M any] struct {
-	Prefix netip.Prefix
-	Routes []Route[M]
+	Prefix netip.Prefix `json:"prefix"`
+	Routes []Route[M]   `json:"routes"`
 }
 
 func clonePrefix[M any](prefix Prefix[M]) Prefix[M] {
