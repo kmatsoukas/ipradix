@@ -404,10 +404,64 @@ func TestConcurrentAccess(t *testing.T) {
 					return
 				}
 				table.FindAll(netip.MustParseAddr("10.1.2.3"))
+				table.Len()
 			}
 		}()
 	}
 	wg.Wait()
+
+	// The final iteration (i=499) upserts without deleting, so every writer's route remains.
+	if prefixes, routes := table.Len(); prefixes != 1 || routes != 5 {
+		t.Fatalf("Len() = (%d, %d); want (1, 5)", prefixes, routes)
+	}
+}
+
+func TestLen(t *testing.T) {
+	var table Table[struct{}]
+	v4 := netip.MustParsePrefix("10.0.0.0/8")
+	v6 := netip.MustParsePrefix("2001:db8::/32")
+	withRoutes := func(prefix netip.Prefix, ids ...uint64) Prefix[struct{}] {
+		entry := Prefix[struct{}]{Prefix: prefix}
+		for _, id := range ids {
+			entry.Routes = append(entry.Routes, Route[struct{}]{ID: id})
+		}
+		return entry
+	}
+
+	steps := []struct {
+		name             string
+		op               func()
+		prefixes, routes int
+	}{
+		{"insert", func() { table.Insert(withRoutes(v4, 1)) }, 1, 1},
+		{"upsert new ID", func() { table.UpsertRoute(v4, Route[struct{}]{ID: 2}) }, 1, 2},
+		{"upsert same ID", func() { table.UpsertRoute(v4, Route[struct{}]{ID: 2}) }, 1, 2},
+		{"insert replaces prefix", func() { table.Insert(withRoutes(v4, 3, 4, 5)) }, 1, 3},
+		{"delete route", func() { table.DeleteRoute(v4, 3) }, 1, 2},
+		{"insert IPv6", func() { table.Insert(withRoutes(v6, 1)) }, 2, 3},
+		{"upsert IPv4 sibling", func() { table.UpsertRoute(netip.MustParsePrefix("10.1.0.0/16"), Route[struct{}]{ID: 1}) }, 3, 4},
+		{"invalid operations", func() {
+			table.Insert(withRoutes(netip.Prefix{}, 1))
+			table.Insert(withRoutes(v4))
+			table.Insert(withRoutes(v4, 7, 7))
+			table.UpsertRoute(netip.Prefix{}, Route[struct{}]{ID: 1})
+			table.UpsertRoute(v4, Route[struct{}]{})
+			table.Delete(netip.Prefix{})
+			table.Delete(netip.MustParsePrefix("192.0.2.0/24"))
+			table.DeleteRoute(v4, 0)
+			table.DeleteRoute(v4, 99)
+			table.DeleteRoute(netip.MustParsePrefix("192.0.2.0/24"), 1)
+		}, 3, 4},
+		{"delete last route", func() { table.DeleteRoute(v6, 1) }, 2, 3},
+		{"delete prefix", func() { table.Delete(v4) }, 1, 1},
+		{"delete final prefix", func() { table.Delete(netip.MustParsePrefix("10.1.0.0/16")) }, 0, 0},
+	}
+	for _, step := range steps {
+		step.op()
+		if prefixes, routes := table.Len(); prefixes != step.prefixes || routes != step.routes {
+			t.Fatalf("%s: Len() = (%d, %d); want (%d, %d)", step.name, prefixes, routes, step.prefixes, step.routes)
+		}
+	}
 }
 
 func testPrefix(prefix string, routeID uint64) Prefix[string] {

@@ -226,7 +226,8 @@ table.DeleteRoute(prefix, id) // Removes one route.
 table.Delete(prefix)          // Removes the entire prefix.
 ```
 
-Deleting the final route also removes its prefix.
+Deleting the final route also removes its prefix. `table.Len()` returns the
+current prefix and route counts in constant time.
 
 ## Data Ownership
 

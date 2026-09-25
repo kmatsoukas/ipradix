@@ -19,9 +19,11 @@ var (
 // Table is a concurrent IPv4 and IPv6 routing table. Its zero value is ready
 // for use. A Table must not be copied after first use.
 type Table[M any] struct {
-	mu sync.RWMutex
-	v4 *node[M]
-	v6 *node[M]
+	mu       sync.RWMutex
+	v4       *node[M]
+	v6       *node[M]
+	prefixes int
+	routes   int
 }
 
 // Insert atomically inserts or replaces a prefix and all of its routes.
@@ -41,7 +43,13 @@ func (t *Table[M]) Insert(prefix Prefix[M]) error {
 	defer t.mu.Unlock()
 
 	root := t.root(normalized.Addr().Is4())
+	if current := findExactNode(*root, normalized); current != nil && current.value != nil {
+		t.routes -= len(current.value.Routes)
+	} else {
+		t.prefixes++
+	}
 	*root = insertNode(*root, normalized, prefix)
+	t.routes += len(prefix.Routes)
 	return nil
 }
 
@@ -66,6 +74,8 @@ func (t *Table[M]) UpsertRoute(prefix netip.Prefix, route Route[M]) error {
 	if current == nil || current.value == nil {
 		value := Prefix[M]{Prefix: normalized, Routes: []Route[M]{route}}
 		*root = insertNode(*root, normalized, value)
+		t.prefixes++
+		t.routes++
 		return nil
 	}
 
@@ -76,6 +86,7 @@ func (t *Table[M]) UpsertRoute(prefix netip.Prefix, route Route[M]) error {
 		}
 	}
 	current.value.Routes = append(current.value.Routes, route)
+	t.routes++
 	return nil
 }
 
@@ -90,9 +101,14 @@ func (t *Table[M]) Delete(prefix netip.Prefix) bool {
 	defer t.mu.Unlock()
 
 	root := t.root(normalized.Addr().Is4())
-	var deleted bool
-	*root, deleted = deleteNode(*root, normalized)
-	return deleted
+	current := findExactNode(*root, normalized)
+	if current == nil || current.value == nil {
+		return false
+	}
+	t.prefixes--
+	t.routes -= len(current.value.Routes)
+	*root, _ = deleteNode(*root, normalized)
+	return true
 }
 
 // DeleteRoute removes a route by ID from an exact prefix. Removing the final
@@ -119,7 +135,9 @@ func (t *Table[M]) DeleteRoute(prefix netip.Prefix, routeID uint64) bool {
 		if current.value.Routes[i].ID != routeID {
 			continue
 		}
+		t.routes--
 		if len(current.value.Routes) == 1 {
+			t.prefixes--
 			*root, _ = deleteNode(*root, normalized)
 			return true
 		}
@@ -185,6 +203,13 @@ func (t *Table[M]) FindAll(addr netip.Addr) []Prefix[M] {
 		matches[left], matches[right] = matches[right], matches[left]
 	}
 	return matches
+}
+
+// Len returns the number of prefixes and routes in the table. O(1).
+func (t *Table[M]) Len() (prefixes, routes int) {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	return t.prefixes, t.routes
 }
 
 func (t *Table[M]) root(ipv4 bool) **node[M] {

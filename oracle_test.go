@@ -31,6 +31,9 @@ func testRandomFamily(t *testing.T, rng *rand.Rand, ipv4 bool, prefixCount, look
 		}
 		entries[prefix] = entry
 	}
+	if prefixes, routes := table.Len(); prefixes != len(entries) || routes != len(entries) {
+		t.Fatalf("Len() = (%d, %d); want (%d, %d)", prefixes, routes, len(entries), len(entries))
+	}
 
 	for i := 0; i < lookupCount; i++ {
 		addr := randomAddr(rng, ipv4)
